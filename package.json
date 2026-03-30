@@ -1,0 +1,151 @@
+{
+  "name": "vscode-qlikcloud",
+  "displayName": "Qlik Cloud Script Editor",
+  "description": "Edit Qlik Cloud app load scripts with section support",
+  "version": "0.0.1",
+  "publisher": "qlikcloud",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "qlikcloud",
+          "title": "Qlik Cloud",
+          "icon": "media/qlik.svg"
+        }
+      ]
+    },
+    "views": {
+      "qlikcloud": [
+        {
+          "id": "qlikScriptSections",
+          "name": "Script Sections"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "qlikcloud.selectContext",
+        "title": "Select Qlik Context",
+        "icon": "$(account)"
+      },
+      {
+        "command": "qlikcloud.openApp",
+        "title": "Open Qlik App",
+        "icon": "$(search)"
+      },
+      {
+        "command": "qlikcloud.saveScript",
+        "title": "Save Script to Qlik Cloud",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "qlikcloud.addSection",
+        "title": "Add Script Section",
+        "icon": "$(add)"
+      },
+      {
+        "command": "qlikcloud.deleteSection",
+        "title": "Delete Section",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "qlikcloud.moveSectionUp",
+        "title": "Move Section Up",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "qlikcloud.moveSectionDown",
+        "title": "Move Section Down",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "qlikcloud.renameSection",
+        "title": "Rename Section"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "qlikcloud.selectContext",
+          "when": "view == qlikScriptSections",
+          "group": "navigation@1"
+        },
+        {
+          "command": "qlikcloud.openApp",
+          "when": "view == qlikScriptSections",
+          "group": "navigation@2"
+        },
+        {
+          "command": "qlikcloud.saveScript",
+          "when": "view == qlikScriptSections && qlikcloud.appLoaded",
+          "group": "navigation@3"
+        },
+        {
+          "command": "qlikcloud.addSection",
+          "when": "view == qlikScriptSections && qlikcloud.appLoaded",
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "qlikcloud.moveSectionUp",
+          "when": "view == qlikScriptSections && viewItem == section",
+          "group": "inline@1"
+        },
+        {
+          "command": "qlikcloud.moveSectionDown",
+          "when": "view == qlikScriptSections && viewItem == section",
+          "group": "inline@2"
+        },
+        {
+          "command": "qlikcloud.deleteSection",
+          "when": "view == qlikScriptSections && viewItem == section",
+          "group": "inline@3"
+        },
+        {
+          "command": "qlikcloud.renameSection",
+          "when": "view == qlikScriptSections && viewItem == section",
+          "group": "context@1"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "qlikscript",
+        "aliases": [
+          "Qlik Script",
+          "qvs"
+        ],
+        "extensions": [
+          ".qvs"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "node esbuild.js --production",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@qlik/api": "^2.6.0",
+    "js-yaml": "^4.1.0"
+  }
+}
