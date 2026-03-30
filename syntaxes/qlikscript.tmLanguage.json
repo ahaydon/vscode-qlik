@@ -1,0 +1,166 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Qlik Script",
+  "scopeName": "source.qvs",
+  "fileTypes": ["qvs"],
+  "patterns": [
+    { "include": "#section-marker" },
+    { "include": "#block-comment" },
+    { "include": "#line-comment" },
+    { "include": "#rem-comment" },
+    { "include": "#string" },
+    { "include": "#dollar-expansion" },
+    { "include": "#bracket-field" },
+    { "include": "#lib-path" },
+    { "include": "#control-keywords" },
+    { "include": "#statement-keywords" },
+    { "include": "#prefix-keywords" },
+    { "include": "#clause-keywords" },
+    { "include": "#logical-operators" },
+    { "include": "#functions" },
+    { "include": "#constants" },
+    { "include": "#number" },
+    { "include": "#wildcard-star" },
+    { "include": "#semicolon" }
+  ],
+  "repository": {
+
+    "section-marker": {
+      "comment": "///$tab Section Name — marks the start of a script section/tab",
+      "match": "^(\\/\\/\\/\\$tab)(.*)$",
+      "captures": {
+        "1": { "name": "keyword.other.section-marker.qvs" },
+        "2": { "name": "entity.name.section.qvs" }
+      }
+    },
+
+    "block-comment": {
+      "name": "comment.block.qvs",
+      "begin": "/\\*",
+      "end": "\\*/",
+      "beginCaptures": { "0": { "name": "punctuation.definition.comment.begin.qvs" } },
+      "endCaptures":   { "0": { "name": "punctuation.definition.comment.end.qvs" } }
+    },
+
+    "line-comment": {
+      "name": "comment.line.double-slash.qvs",
+      "match": "//.*$",
+      "captures": { "0": { "name": "comment.line.double-slash.qvs" } }
+    },
+
+    "rem-comment": {
+      "comment": "REM statement — treated as a comment",
+      "name": "comment.line.rem.qvs",
+      "match": "(?i)\\bREM\\b.*?;",
+      "captures": { "0": { "name": "comment.line.rem.qvs" } }
+    },
+
+    "string": {
+      "name": "string.quoted.single.qvs",
+      "begin": "'",
+      "end": "'",
+      "patterns": [
+        {
+          "comment": "Escaped single quote inside string",
+          "name": "constant.character.escape.qvs",
+          "match": "''"
+        },
+        { "include": "#dollar-expansion" }
+      ]
+    },
+
+    "dollar-expansion": {
+      "comment": "Dollar-sign expansion: $(varname) or $(#varname) or $(=expression)",
+      "patterns": [
+        {
+          "name": "meta.dollar-expansion.qvs",
+          "match": "(\\$\\()(#?)([^)]*)(\\))",
+          "captures": {
+            "1": { "name": "punctuation.definition.variable.qvs" },
+            "2": { "name": "keyword.operator.dollar-expansion.qvs" },
+            "3": { "name": "variable.other.qvs" },
+            "4": { "name": "punctuation.definition.variable.qvs" }
+          }
+        }
+      ]
+    },
+
+    "bracket-field": {
+      "comment": "Bracket-quoted field/table names: [My Field Name]",
+      "name": "variable.other.field.qvs",
+      "begin": "\\[",
+      "end": "\\]",
+      "beginCaptures": { "0": { "name": "punctuation.definition.field.begin.qvs" } },
+      "endCaptures":   { "0": { "name": "punctuation.definition.field.end.qvs" } }
+    },
+
+    "lib-path": {
+      "comment": "Lib:// paths used in FROM clauses",
+      "name": "string.unquoted.lib-path.qvs",
+      "match": "(?i)lib://[^\\s;,)]*"
+    },
+
+    "control-keywords": {
+      "comment": "Control flow statements",
+      "name": "keyword.control.qvs",
+      "match": "(?i)\\b(if|then|elseif|else|end\\s+if|for|for\\s+each|next|to|step|do|while|loop|until|exit|exit\\s+script|exit\\s+for|exit\\s+do|sub|end\\s+sub|call|switch|case|default|end\\s+switch|when|unless|in)\\b"
+    },
+
+    "statement-keywords": {
+      "comment": "Regular script statements",
+      "name": "keyword.other.statement.qvs",
+      "match": "(?i)\\b(load|select|from|where|group\\s+by|order\\s+by|having|limit|union|set|let|store|into|resident|autogenerate|inline|extension|connect|to|using|map|unmap|alias|directory|execute|tag|untag|qualify|unqualify|rename\\s+field|rename\\s+fields|rename\\s+table|rename\\s+tables|drop\\s+field|drop\\s+fields|drop\\s+table|drop\\s+tables|loosen\\s+table|loosen\\s+tables|comment\\s+field|comment\\s+table|binary|nullasnull|nullasvalue|star\\s+is|force|sleep|trace|flush\\s+log|section|access|application|declare|derive|sql|sqlcolumns|sqltables|sqltypes|disconnect|field|fields|distinct|as|with|from\\s+field|from\\s+fields|format\\s+is|info|autonumber|intervalmatchwhere|noconcatenate|crosstable|hierarchy|hierarchybelongsto|generic|semantic|direct\\s+query|add\\s+only)\\b"
+    },
+
+    "prefix-keywords": {
+      "comment": "Script prefixes (applied to LOAD/SELECT)",
+      "name": "keyword.other.prefix.qvs",
+      "match": "(?i)\\b(join|inner\\s+join|left\\s+join|right\\s+join|outer\\s+join|keep|inner\\s+keep|left\\s+keep|right\\s+keep|concatenate|noconcatenate|add|replace|merge|partial\\s+reload|first|sample|buffer|mapping|intervalmatch|crosstable|generic|semantic|hierarchy|hierarchybelongsto)\\b"
+    },
+
+    "clause-keywords": {
+      "comment": "Sub-clauses and modifiers",
+      "name": "keyword.other.clause.qvs",
+      "match": "(?i)\\b(where|exists|not\\s+exists|only|peek|fieldvalue|fieldindex|by|asc|desc|total|all|distinct|on|resident|autogenerate|inline|extension|format\\s+is|interval\\s+match)\\b"
+    },
+
+    "logical-operators": {
+      "comment": "Logical and relational operators",
+      "name": "keyword.operator.logical.qvs",
+      "match": "(?i)\\b(and|or|not|xor|like|match|mixmatch|wildmatch|wildmatch5|precedes|follows)\\b|<>|<=|>=|<|>|="
+    },
+
+    "functions": {
+      "comment": "Built-in Qlik functions — matched before opening paren",
+      "name": "support.function.qvs",
+      "match": "(?i)\\b(abs|acos|acosh|addmonths|addyears|age|applycodepage|applymap|asin|asinh|atan|atan|atan2|atanh|autonumber|avg|bitcount|blackandschole|capitalize|ceil|chr|class|coalesce|combin|concat|converttolocaltime|correl|cos|cosh|count|countregex|date|daylightsaving|day|dayend|dayname|daynumberofquarter|daynumberofyear|daystart|div|e|evaluate|even|exists|extractregex|extractregexgroup|fabs|fact|fieldindex|fieldvalue|fieldvaluecount|findoneofvalue|firstsortedvalue|firstvalue|firstworkdate|floor|fmod|frac|fractile|fv|getregistrystring|gmt|hash128|hash160|hash256|hierarchy|hierarchybelongsto|hour|if|inday|indaytotime|index|indexregex|indexregexgroup|interval|inlunarweek|inlunarweektodate|inmonth|inmonths|inmonthstodate|inmonthtodate|inquarter|inquartertodate|inyear|inyeartodate|irr|isempty|isjson|isnum|isregex|istext|isvalidcolor|jsonget|jsonset|jsonsetex|keepchar|kurtosis|lastvalue|lastworkdate|levenshteinDist|left|len|let|localtime|lower|ltrim|lunarweekend|lunarweekname|lunarweekstart|makedate|makeweekdate|maketime|mapsubstring|match|max|maxstring|median|mid|min|minstring|minute|mixmatch|mod|mode|money|month|monthend|monthname|monthsend|monthsname|monthsstart|monthstart|msgbox|networkdays|now|nper|npv|null|nullcount|num|numericcount|odd|only|ord|peek|permut|pi|pmt|purgechar|pv|rand|rangeapp|rangeavg|rangecount|rangecorrel|rangefractile|rangeirr|rangekurtosis|rangemax|rangemaxstring|rangemin|rangeminstring|rangemissingcount|rangemode|rangenullcount|rangenumericcount|rangenpv|rangeonly|rangeskew|rangestdev|rangesum|rangetextcount|rangexirr|rangexnpv|rate|recno|rem|repeat|replace|replaceregex|replaceregexgroup|right|rowno|rtrim|second|setdateyear|setdateyearmonth|sign|sin|sinh|skew|sqrt|stdev|subfield|subfieldregex|substringcount|sum|tan|tanh|textbetween|textcount|time|timestamp|timezone|today|trim|upper|utc|variance|week|weekday|weekend|weekname|weekstart|weekyear|wildmatch|wildmatch5|xirr|xnpv|year|yearend|yearname|yearstart|yeartodate|date#|interval#|money#|num#|time#|timestamp#)(?=\\s*\\()",
+      "captures": {
+        "1": { "name": "support.function.qvs" }
+      }
+    },
+
+    "constants": {
+      "comment": "Boolean and null constants",
+      "name": "constant.language.qvs",
+      "match": "(?i)\\b(true|false|null|nan)\\b"
+    },
+
+    "number": {
+      "comment": "Numeric literals (integer, decimal, scientific notation, hex)",
+      "name": "constant.numeric.qvs",
+      "match": "\\b(0x[0-9a-fA-F]+|\\d+\\.?\\d*([eE][+-]?\\d+)?)\\b"
+    },
+
+    "wildcard-star": {
+      "comment": "Wildcard * in LOAD * or field lists",
+      "name": "keyword.operator.wildcard.qvs",
+      "match": "(?<=LOAD|load|Load)\\s*(\\*)|^\\s*(\\*)"
+    },
+
+    "semicolon": {
+      "comment": "Statement terminator",
+      "name": "punctuation.terminator.statement.qvs",
+      "match": ";"
+    }
+  }
+}

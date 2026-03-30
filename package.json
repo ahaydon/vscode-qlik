@@ -126,7 +126,15 @@
         ],
         "extensions": [
           ".qvs"
-        ]
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "qlikscript",
+        "scopeName": "source.qvs",
+        "path": "./syntaxes/qlikscript.tmLanguage.json"
       }
     ]
   },
