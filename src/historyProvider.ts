@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { parseScript, ScriptSection } from './scriptModel';
-import { QlikScriptFS } from './scriptFS';
 import { QlikHistoryContentProvider } from './historyContentProvider';
 import type { QlikClient, ScriptMeta } from './qlikClient';
 
@@ -33,8 +32,11 @@ export class HistorySectionItem extends vscode.TreeItem {
   constructor(
     public readonly sectionName: string,
     public readonly status: 'modified' | 'added' | 'removed',
+    /** Left side of diff — the older (before) state */
     public readonly histUri: vscode.Uri,
+    /** Right side of diff — the newer (after) state */
     public readonly currentUri: vscode.Uri,
+    public readonly versionLabel: string,
   ) {
     super(sectionName, vscode.TreeItemCollapsibleState.None);
 
@@ -73,8 +75,6 @@ export class QlikHistoryProvider
   private _versions: HistoryVersionItem[] = [];
   /** scriptId → parsed sections (lazy-populated on expansion) */
   private _scriptCache = new Map<string, ScriptSection[]>();
-  /** Current working sections — updated on every load/revert */
-  private _currentSections: ScriptSection[] = [];
   private _appId: string | undefined;
   private _client: QlikClient | undefined;
 
@@ -83,42 +83,30 @@ export class QlikHistoryProvider
   // ── Public API ─────────────────────────────────────────────────────────
 
   /** Called after an app is loaded or reverted */
-  loadHistory(appId: string, client: QlikClient, currentSections: ScriptSection[]): void {
+  loadHistory(appId: string, client: QlikClient): void {
     this._appId = appId;
     this._client = client;
-    this._currentSections = currentSections;
     this._scriptCache.clear();
     this._versions = [];
     this._onDidChangeTreeData.fire(null);
 
-    // Fetch in background; refresh tree when done
     client.getScriptHistory(appId).then(metas => {
       this._versions = metas.map(
         m => new HistoryVersionItem(m.scriptId!, appId, m.versionMessage ?? '', m.modifiedTime ?? '', m.size ?? 0),
       );
       this._onDidChangeTreeData.fire(null);
-    }).catch(() => {
-      // silently ignore — user will see empty tree
-    });
-  }
-
-  /** Update the current sections reference (e.g., after a section edit) */
-  setCurrentSections(sections: ScriptSection[]): void {
-    this._currentSections = sections;
-    // Invalidate expanded children so they are re-compared on next expand
-    this._onDidChangeTreeData.fire(null);
+    }).catch(() => {});
   }
 
   clear(): void {
     this._versions = [];
     this._scriptCache.clear();
-    this._currentSections = [];
     this._appId = undefined;
     this._client = undefined;
     this._onDidChangeTreeData.fire(null);
   }
 
-  /** Get cached parsed sections for a scriptId, or undefined if not yet fetched */
+  /** Get cached parsed sections for a scriptId (used by revert) */
   getCachedSections(scriptId: string): ScriptSection[] | undefined {
     return this._scriptCache.get(scriptId);
   }
@@ -132,86 +120,92 @@ export class QlikHistoryProvider
   async getChildren(
     element?: HistoryVersionItem | HistorySectionItem,
   ): Promise<(HistoryVersionItem | HistorySectionItem)[]> {
-    if (!element) {
-      return this._versions;
-    }
+    if (!element) return this._versions;
+    if (!(element instanceof HistoryVersionItem)) return [];
 
-    if (!(element instanceof HistoryVersionItem)) {
-      return [];
-    }
+    const idx = this._versions.findIndex(v => v.scriptId === element.scriptId);
+    if (idx === -1 || !this._client || !this._appId) return [];
 
-    // Lazy-fetch the historical script
-    let histSections = this._scriptCache.get(element.scriptId);
-    if (!histSections) {
-      if (!this._client || !this._appId) return [];
-      try {
-        const raw = await this._client.getScriptVersion(this._appId, element.scriptId);
-        histSections = parseScript(raw);
-        this._scriptCache.set(element.scriptId, histSections);
-      } catch {
-        return [];
-      }
-    }
+    // Fetch this version and the one before it (older) in parallel
+    const prevVersion = this._versions[idx + 1]; // undefined if oldest
+    const [thisSections, prevSections] = await Promise.all([
+      this._fetchSections(element.scriptId),
+      prevVersion ? this._fetchSections(prevVersion.scriptId) : Promise.resolve([] as ScriptSection[]),
+    ]);
 
-    return this._buildSectionItems(element.scriptId, histSections);
+    const prevScriptId = prevVersion?.scriptId ?? `${element.scriptId}-empty`;
+
+    return this._buildSectionItems(
+      element.scriptId,
+      thisSections,
+      prevScriptId,
+      prevSections,
+      typeof element.label === 'string' ? element.label : '(no message)',
+    );
   }
 
   // ── Internal ──────────────────────────────────────────────────────────
 
-  private _buildSectionItems(scriptId: string, histSections: ScriptSection[]): HistorySectionItem[] {
-    const currentMap = new Map(this._currentSections.map(s => [s.name, s]));
-    const histMap = new Map(histSections.map(s => [s.name, s]));
+  private async _fetchSections(scriptId: string): Promise<ScriptSection[]> {
+    let sections = this._scriptCache.get(scriptId);
+    if (!sections) {
+      const raw = await this._client!.getScriptVersion(this._appId!, scriptId);
+      sections = parseScript(raw);
+      this._scriptCache.set(scriptId, sections);
+    }
+    return sections;
+  }
+
+  private _buildSectionItems(
+    scriptId: string,
+    thisSections: ScriptSection[],   // newer (after) state
+    prevScriptId: string,
+    prevSections: ScriptSection[],   // older (before) state
+    versionLabel: string,
+  ): HistorySectionItem[] {
+    const thisMap = new Map(thisSections.map(s => [s.name, s]));
+    const prevMap = new Map(prevSections.map(s => [s.name, s]));
+    const EMPTY = `${scriptId}-empty`;
     const items: HistorySectionItem[] = [];
 
-    for (const hist of histSections) {
-      const current = currentMap.get(hist.name);
-      let status: 'modified' | 'removed';
-
-      if (!current) {
-        status = 'removed';
-      } else if (hist.body.trim() !== current.body.trim()) {
-        status = 'modified';
-      } else {
-        continue; // unchanged — skip
+    // Sections in this version — added or modified compared to previous
+    for (const s of thisSections) {
+      const prev = prevMap.get(s.name);
+      if (!prev) {
+        // Added in this version
+        this._contentProvider.store(scriptId, s.name, s.body);
+        this._contentProvider.store(EMPTY, s.name, '');
+        items.push(new HistorySectionItem(
+          s.name, 'added',
+          QlikHistoryContentProvider.uri(EMPTY, s.name),
+          QlikHistoryContentProvider.uri(scriptId, s.name),
+          versionLabel,
+        ));
+      } else if (s.body.trim() !== prev.body.trim()) {
+        // Modified in this version
+        this._contentProvider.store(prevScriptId, s.name, prev.body);
+        this._contentProvider.store(scriptId, s.name, s.body);
+        items.push(new HistorySectionItem(
+          s.name, 'modified',
+          QlikHistoryContentProvider.uri(prevScriptId, s.name),
+          QlikHistoryContentProvider.uri(scriptId, s.name),
+          versionLabel,
+        ));
       }
-
-      // Prepare content for the diff editor
-      this._contentProvider.store(scriptId, hist.name, hist.body);
-
-      // Right side: current section URI (or empty historical URI if removed)
-      let currentUri: vscode.Uri;
-      if (current) {
-        currentUri = QlikScriptFS.uri(this._appId!, current);
-      } else {
-        // Section was removed — show empty right side
-        this._contentProvider.store(`${scriptId}-empty`, hist.name, '');
-        currentUri = QlikHistoryContentProvider.uri(`${scriptId}-empty`, hist.name);
-      }
-
-      items.push(
-        new HistorySectionItem(
-          hist.name,
-          status,
-          QlikHistoryContentProvider.uri(scriptId, hist.name),
-          currentUri,
-        ),
-      );
+      // unchanged — skip
     }
 
-    // Sections that exist in current but NOT in history → 'added' (shown from history perspective)
-    for (const cur of this._currentSections) {
-      if (!histMap.has(cur.name)) {
-        // In history view: this section didn't exist yet — mark as added (it was added after)
-        this._contentProvider.store(`${scriptId}-empty`, cur.name, '');
-        const emptyUri = QlikHistoryContentProvider.uri(`${scriptId}-empty`, cur.name);
-        items.push(
-          new HistorySectionItem(
-            cur.name,
-            'added',
-            emptyUri,
-            QlikScriptFS.uri(this._appId!, cur),
-          ),
-        );
+    // Sections in previous version that are no longer in this version — removed
+    for (const s of prevSections) {
+      if (!thisMap.has(s.name)) {
+        this._contentProvider.store(prevScriptId, s.name, s.body);
+        this._contentProvider.store(EMPTY, s.name, '');
+        items.push(new HistorySectionItem(
+          s.name, 'removed',
+          QlikHistoryContentProvider.uri(prevScriptId, s.name),
+          QlikHistoryContentProvider.uri(EMPTY, s.name),
+          versionLabel,
+        ));
       }
     }
 

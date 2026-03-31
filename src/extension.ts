@@ -283,7 +283,7 @@ async function loadAppScript(app: QlikApp): Promise<void> {
   vscode.commands.executeCommand('setContext', 'qlikcloud.appLoaded', true);
 
   // Load history in background
-  historyProvider.loadHistory(app.id, currentClient!, sections);
+  historyProvider.loadHistory(app.id, currentClient!);
 
   const refresh = (globalThis as Record<string, unknown>).__qlikRefreshStatus as (() => void) | undefined;
   refresh?.();
@@ -486,7 +486,7 @@ async function cmdReloadApp(): Promise<void> {
 
       if (result === 'succeeded') {
         vscode.window.showInformationMessage(`Reload succeeded: "${appName}"`);
-        historyProvider.loadHistory(currentAppId!, currentClient!, treeProvider.getSections());
+        historyProvider.loadHistory(currentAppId!, currentClient!);
       } else if (result === 'cancelled') {
         vscode.window.showWarningMessage(`Reload cancelled: "${appName}"`);
       } else {
@@ -501,11 +501,11 @@ async function cmdRefreshHistory(): Promise<void> {
     vscode.window.showErrorMessage('No app loaded.');
     return;
   }
-  historyProvider.loadHistory(currentAppId, currentClient, treeProvider.getSections());
+  historyProvider.loadHistory(currentAppId, currentClient);
 }
 
 async function cmdOpenHistoryDiff(item: HistorySectionItem): Promise<void> {
-  const title = `${item.sectionName}: History \u2194 Current`;
+  const title = `${item.sectionName} (${item.versionLabel})`;
   await vscode.commands.executeCommand('vscode.diff', item.histUri, item.currentUri, title);
 }
 
@@ -552,7 +552,7 @@ async function cmdRevertToVersion(item: HistoryVersionItem): Promise<void> {
   scriptFS.populateSections(currentAppId!, sections);
   treeProvider.setApp(currentAppId!, appName!, sections);
   treeProvider.markDirty('__reverted__');
-  historyProvider.loadHistory(currentAppId!, currentClient!, sections);
+  historyProvider.loadHistory(currentAppId!, currentClient!);
 
   vscode.commands.executeCommand('setContext', 'qlikcloud.appLoaded', true);
 
