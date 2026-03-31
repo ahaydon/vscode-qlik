@@ -3,7 +3,13 @@
   "displayName": "Qlik Cloud Script Editor",
   "description": "Edit Qlik Cloud app load scripts with section support",
   "version": "0.0.1",
-  "publisher": "qlikcloud",
+  "publisher": "Adam Haydon",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahaydon/vscode-qlik.git"
+  },
+  "icon": "media/qlik.png",
   "engines": {
     "vscode": "^1.85.0"
   },
