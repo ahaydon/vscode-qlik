@@ -27,6 +27,10 @@
         {
           "id": "qlikScriptSections",
           "name": "Script Sections"
+        },
+        {
+          "id": "qlikScriptHistory",
+          "name": "Script History"
         }
       ]
     },
@@ -69,6 +73,20 @@
       {
         "command": "qlikcloud.renameSection",
         "title": "Rename Section"
+      },
+      {
+        "command": "qlikcloud.refreshHistory",
+        "title": "Refresh History",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "qlikcloud.revertToVersion",
+        "title": "Revert to This Version",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "qlikcloud.openHistoryDiff",
+        "title": "Show Diff"
       }
     ],
     "menus": {
@@ -92,6 +110,11 @@
           "command": "qlikcloud.addSection",
           "when": "view == qlikScriptSections && qlikcloud.appLoaded",
           "group": "navigation@4"
+        },
+        {
+          "command": "qlikcloud.refreshHistory",
+          "when": "view == qlikScriptHistory && qlikcloud.appLoaded",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -114,6 +137,11 @@
           "command": "qlikcloud.renameSection",
           "when": "view == qlikScriptSections && viewItem == section",
           "group": "context@1"
+        },
+        {
+          "command": "qlikcloud.revertToVersion",
+          "when": "view == qlikScriptHistory && viewItem == historyVersion",
+          "group": "inline@1"
         }
       ]
     },

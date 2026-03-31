@@ -1,8 +1,11 @@
 import { getSpaces as apiGetSpaces } from '@qlik/api/spaces';
 import { getItems } from '@qlik/api/items';
-import { getAppScript, updateAppScript } from '@qlik/api/apps';
+import { getAppScript, getAppScriptHistory, updateAppScript } from '@qlik/api/apps';
 import type { Space } from '@qlik/api/spaces';
+import type { ScriptMeta } from '@qlik/api/apps';
 import type { HostConfig } from '@qlik/api/auth';
+
+export type { ScriptMeta };
 
 export type { Space as QlikSpace };
 
@@ -18,6 +21,8 @@ export interface QlikClient {
   searchApps(spaceIds: string[], query: string): Promise<QlikApp[]>;
   getCurrentScript(appId: string): Promise<string>;
   saveScript(appId: string, script: string, versionMessage: string): Promise<void>;
+  getScriptHistory(appId: string): Promise<ScriptMeta[]>;
+  getScriptVersion(appId: string, scriptId: string): Promise<string>;
 }
 
 export function createClient(hostConfig: HostConfig): QlikClient {
@@ -89,6 +94,16 @@ export function createClient(hostConfig: HostConfig): QlikClient {
 
     async saveScript(appId: string, script: string, versionMessage: string): Promise<void> {
       await updateAppScript(appId, { script, versionMessage }, opts());
+    },
+
+    async getScriptHistory(appId: string): Promise<ScriptMeta[]> {
+      const response = await getAppScriptHistory(appId, { limit: 100 }, opts());
+      return response.data.scripts ?? [];
+    },
+
+    async getScriptVersion(appId: string, scriptId: string): Promise<string> {
+      const response = await getAppScript(appId, scriptId, opts());
+      return response.data.script ?? '';
     },
   };
 }

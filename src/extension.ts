@@ -5,6 +5,8 @@ import type { Space } from '@qlik/api/spaces';
 import { parseScript, serializeScript } from './scriptModel';
 import { QlikScriptFS } from './scriptFS';
 import { QlikScriptTreeProvider, SectionItem } from './treeProvider';
+import { QlikHistoryContentProvider } from './historyContentProvider';
+import { QlikHistoryProvider, HistoryVersionItem, HistorySectionItem } from './historyProvider';
 
 // ── Module-level state ─────────────────────────────────────────────────────
 
@@ -14,6 +16,8 @@ let currentAppId: string | undefined;
 
 const scriptFS = new QlikScriptFS();
 const treeProvider = new QlikScriptTreeProvider();
+const historyContentProvider = new QlikHistoryContentProvider();
+const historyProvider = new QlikHistoryProvider(historyContentProvider);
 
 // ── Activation ─────────────────────────────────────────────────────────────
 
@@ -26,12 +30,26 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // Register tree view
+  // Register history content provider (read-only, for diff editor left side)
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(
+      QlikHistoryContentProvider.SCHEME,
+      historyContentProvider,
+    ),
+  );
+
+  // Register tree views
   const treeView = vscode.window.createTreeView('qlikScriptSections', {
     treeDataProvider: treeProvider,
     showCollapseAll: false,
   });
   context.subscriptions.push(treeView);
+
+  const historyView = vscode.window.createTreeView('qlikScriptHistory', {
+    treeDataProvider: historyProvider,
+    showCollapseAll: false,
+  });
+  context.subscriptions.push(historyView);
 
   // Update tree title to show current context / app
   const updateTitle = () => {
@@ -76,6 +94,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('qlikcloud.moveSectionUp', cmdMoveUp),
     vscode.commands.registerCommand('qlikcloud.moveSectionDown', cmdMoveDown),
     vscode.commands.registerCommand('qlikcloud.renameSection', cmdRenameSection),
+    vscode.commands.registerCommand('qlikcloud.refreshHistory', cmdRefreshHistory),
+    vscode.commands.registerCommand('qlikcloud.revertToVersion', cmdRevertToVersion),
+    vscode.commands.registerCommand('qlikcloud.openHistoryDiff', cmdOpenHistoryDiff),
   );
 
   // Status-bar item
@@ -259,6 +280,9 @@ async function loadAppScript(app: QlikApp): Promise<void> {
   treeProvider.setApp(app.id, app.name, sections);
   vscode.commands.executeCommand('setContext', 'qlikcloud.appLoaded', true);
 
+  // Load history in background
+  historyProvider.loadHistory(app.id, currentClient!, sections);
+
   const refresh = (globalThis as Record<string, unknown>).__qlikRefreshStatus as (() => void) | undefined;
   refresh?.();
 
@@ -411,4 +435,78 @@ async function cmdRenameSection(item: SectionItem): Promise<void> {
 
   const refresh = (globalThis as Record<string, unknown>).__qlikRefreshStatus as (() => void) | undefined;
   refresh?.();
+}
+
+async function cmdRefreshHistory(): Promise<void> {
+  if (!currentClient || !currentAppId) {
+    vscode.window.showErrorMessage('No app loaded.');
+    return;
+  }
+  historyProvider.loadHistory(currentAppId, currentClient, treeProvider.getSections());
+}
+
+async function cmdOpenHistoryDiff(item: HistorySectionItem): Promise<void> {
+  const title = `${item.sectionName}: History \u2194 Current`;
+  await vscode.commands.executeCommand('vscode.diff', item.histUri, item.currentUri, title);
+}
+
+async function cmdRevertToVersion(item: HistoryVersionItem): Promise<void> {
+  if (!currentClient || !currentAppId) return;
+
+  const label = typeof item.label === 'string' ? item.label : '(no message)';
+  const confirm = await vscode.window.showWarningMessage(
+    `Revert to "${label}"? Current unsaved changes will be lost.`,
+    { modal: true },
+    'Revert',
+  );
+  if (confirm !== 'Revert') return;
+
+  // Use cached sections if available, otherwise fetch
+  let rawScript: string | undefined;
+  const cached = historyProvider.getCachedSections(item.scriptId);
+  if (cached) {
+    // Re-serialize from cached sections to get raw script
+    const { serializeScript } = await import('./scriptModel');
+    rawScript = serializeScript(cached);
+  }
+
+  if (!rawScript) {
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Loading version…', cancellable: false },
+      async () => {
+        rawScript = await currentClient!.getScriptVersion(currentAppId!, item.scriptId);
+      },
+    );
+  }
+
+  const sections = parseScript(rawScript!);
+  const appName = treeProvider.getAppName() ?? currentAppId;
+
+  // Close any open qlikscript:// editors
+  for (const doc of vscode.workspace.textDocuments) {
+    if (doc.uri.scheme === QlikScriptFS.SCHEME) {
+      await vscode.window.showTextDocument(doc, { preview: true, preserveFocus: false });
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    }
+  }
+
+  scriptFS.populateSections(currentAppId!, sections);
+  treeProvider.setApp(currentAppId!, appName!, sections);
+  treeProvider.markDirty('__reverted__');
+  historyProvider.loadHistory(currentAppId!, currentClient!, sections);
+
+  vscode.commands.executeCommand('setContext', 'qlikcloud.appLoaded', true);
+
+  const refresh = (globalThis as Record<string, unknown>).__qlikRefreshStatus as (() => void) | undefined;
+  refresh?.();
+
+  // Open first section
+  if (sections.length > 0) {
+    const uri = QlikScriptFS.uri(currentAppId!, sections[0]);
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await vscode.languages.setTextDocumentLanguage(doc, 'qlikscript');
+    await vscode.window.showTextDocument(doc, { preview: false });
+  }
+
+  vscode.window.showInformationMessage(`Reverted to "${label}" — save to push to Qlik Cloud.`);
 }
