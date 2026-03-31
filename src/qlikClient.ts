@@ -1,6 +1,7 @@
 import { getSpaces as apiGetSpaces } from '@qlik/api/spaces';
 import { getItems } from '@qlik/api/items';
 import { getAppScript, getAppScriptHistory, updateAppScript } from '@qlik/api/apps';
+import { openAppSession } from '@qlik/api/qix';
 import type { Space } from '@qlik/api/spaces';
 import type { ScriptMeta } from '@qlik/api/apps';
 import type { HostConfig } from '@qlik/api/auth';
@@ -23,6 +24,11 @@ export interface QlikClient {
   saveScript(appId: string, script: string, versionMessage: string): Promise<void>;
   getScriptHistory(appId: string): Promise<ScriptMeta[]>;
   getScriptVersion(appId: string, scriptId: string): Promise<string>;
+  reloadApp(
+    appId: string,
+    onLog: (chunk: string) => void,
+    isCancelled: () => boolean,
+  ): Promise<'succeeded' | 'failed' | 'cancelled'>;
 }
 
 export function createClient(hostConfig: HostConfig): QlikClient {
@@ -104,6 +110,58 @@ export function createClient(hostConfig: HostConfig): QlikClient {
     async getScriptVersion(appId: string, scriptId: string): Promise<string> {
       const response = await getAppScript(appId, scriptId, opts());
       return response.data.script ?? '';
+    },
+
+    async reloadApp(
+      appId: string,
+      onLog: (chunk: string) => void,
+      isCancelled: () => boolean,
+    ): Promise<'succeeded' | 'failed' | 'cancelled'> {
+      const session = openAppSession({ appId, hostConfig });
+
+      let doc: Awaited<ReturnType<typeof session.getDoc>>;
+      try {
+        doc = await session.getDoc();
+      } catch (err) {
+        await session.close().catch(() => {});
+        throw err;
+      }
+
+      let reloadDone = false;
+      let reloadSuccess = false;
+
+      // Start reload — long-running, do not await here
+      doc.doReload(0, false, false)
+        .then(ok => { reloadSuccess = ok; })
+        .catch(() => { reloadSuccess = false; })
+        .finally(() => { reloadDone = true; });
+
+      let logLength = 0;
+
+      // Poll getProgress(0) until the reload finishes or is cancelled
+      while (!reloadDone) {
+        if (isCancelled()) {
+          await session.close().catch(() => {});
+          return 'cancelled';
+        }
+
+        await new Promise(r => setTimeout(r, 500));
+
+        try {
+          const progress = await doc.global.getProgress(0);
+          const log: string = progress.qPersistentProgress ?? '';
+          if (log.length > logLength) {
+            onLog(log.slice(logLength));
+            logLength = log.length;
+          }
+          if (progress.qFinished) break;
+        } catch {
+          if (reloadDone) break;
+        }
+      }
+
+      await session.close().catch(() => {});
+      return reloadSuccess ? 'succeeded' : 'failed';
     },
   };
 }

@@ -18,6 +18,7 @@ const scriptFS = new QlikScriptFS();
 const treeProvider = new QlikScriptTreeProvider();
 const historyContentProvider = new QlikHistoryContentProvider();
 const historyProvider = new QlikHistoryProvider(historyContentProvider);
+const reloadOutput = vscode.window.createOutputChannel('Qlik Cloud Reload', 'log');
 
 // ── Activation ─────────────────────────────────────────────────────────────
 
@@ -97,6 +98,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('qlikcloud.refreshHistory', cmdRefreshHistory),
     vscode.commands.registerCommand('qlikcloud.revertToVersion', cmdRevertToVersion),
     vscode.commands.registerCommand('qlikcloud.openHistoryDiff', cmdOpenHistoryDiff),
+    vscode.commands.registerCommand('qlikcloud.reloadApp', cmdReloadApp),
   );
 
   // Status-bar item
@@ -435,6 +437,63 @@ async function cmdRenameSection(item: SectionItem): Promise<void> {
 
   const refresh = (globalThis as Record<string, unknown>).__qlikRefreshStatus as (() => void) | undefined;
   refresh?.();
+}
+
+async function cmdReloadApp(): Promise<void> {
+  if (!currentClient || !currentAppId) {
+    vscode.window.showErrorMessage('No app loaded.');
+    return;
+  }
+
+  const appName = treeProvider.getAppName() ?? currentAppId;
+
+  reloadOutput.clear();
+  reloadOutput.show(/* preserveFocus */ true);
+  reloadOutput.appendLine(`Reloading "${appName}" …`);
+  reloadOutput.appendLine(`Started: ${new Date().toLocaleString()}`);
+  reloadOutput.appendLine('');
+
+  let cancelled = false;
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `Reloading "${appName}"`,
+      cancellable: true,
+    },
+    async (_progress, token) => {
+      token.onCancellationRequested(() => {
+        cancelled = true;
+        reloadOutput.appendLine('\n[Cancelling…]');
+      });
+
+      let result: 'succeeded' | 'failed' | 'cancelled';
+      try {
+        result = await currentClient!.reloadApp(
+          currentAppId!,
+          chunk => reloadOutput.append(chunk),
+          () => cancelled,
+        );
+      } catch (err) {
+        reloadOutput.appendLine(`\nERROR: ${(err as Error).message}`);
+        vscode.window.showErrorMessage(`Reload error: ${(err as Error).message}`);
+        return;
+      }
+
+      reloadOutput.appendLine('');
+      reloadOutput.appendLine(`Finished: ${new Date().toLocaleString()}`);
+      reloadOutput.appendLine(`Status: ${result.toUpperCase()}`);
+
+      if (result === 'succeeded') {
+        vscode.window.showInformationMessage(`Reload succeeded: "${appName}"`);
+        historyProvider.loadHistory(currentAppId!, currentClient!, treeProvider.getSections());
+      } else if (result === 'cancelled') {
+        vscode.window.showWarningMessage(`Reload cancelled: "${appName}"`);
+      } else {
+        vscode.window.showErrorMessage(`Reload failed: "${appName}"`);
+      }
+    },
+  );
 }
 
 async function cmdRefreshHistory(): Promise<void> {

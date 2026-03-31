@@ -75,6 +75,11 @@
         "title": "Rename Section"
       },
       {
+        "command": "qlikcloud.reloadApp",
+        "title": "Reload App",
+        "icon": "$(run)"
+      },
+      {
         "command": "qlikcloud.refreshHistory",
         "title": "Refresh History",
         "icon": "$(refresh)"
@@ -110,6 +115,11 @@
           "command": "qlikcloud.addSection",
           "when": "view == qlikScriptSections && qlikcloud.appLoaded",
           "group": "navigation@4"
+        },
+        {
+          "command": "qlikcloud.reloadApp",
+          "when": "view == qlikScriptSections && qlikcloud.appLoaded",
+          "group": "navigation@5"
         },
         {
           "command": "qlikcloud.refreshHistory",
