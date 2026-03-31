@@ -47,11 +47,14 @@ export function activate(context: vscode.ExtensionContext): void {
   // Listen for section file saves → mark dirty
   context.subscriptions.push(
     scriptFS.onSectionWritten(uri => {
-      const sectionId = uri.path.split('/').filter(Boolean)[0];
+      // URI: qlikscript://<sectionId>/<appId>/<name>.qvs
+      const parts = uri.path.split('/').filter(Boolean);
+      const appId = parts[0];
+      const sectionId = uri.authority;
       if (sectionId) {
         treeProvider.markDirty(sectionId);
         // Sync the in-memory body back into the section store
-        const body = scriptFS.readSectionBody(uri.authority, sectionId);
+        const body = scriptFS.readSectionBody(appId, sectionId);
         const sections = treeProvider.getSections();
         const s = sections.find(x => x.id === sectionId);
         if (s && body !== undefined) s.body = body;

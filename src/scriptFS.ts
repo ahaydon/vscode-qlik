@@ -4,10 +4,13 @@ import { ScriptSection } from './scriptModel';
 /**
  * In-memory virtual filesystem for Qlik script sections.
  *
- * URI scheme:  qlikscript://<appId>/<sectionId>.qvs
+ * URI scheme:  qlikscript://<sectionId>/<appId>/<encodedName>.qvs
+ *
+ * The authority holds the internal sectionId (not visible in tab titles).
+ * The first path segment is the appId, visible in the tab title/breadcrumb.
  *
  * Sections are read/written as UTF-8 text.  The ordering lives in the
- * ScriptSectionStore (owned by the extension); only the content lives here.
+ * QlikScriptTreeProvider (owned by the extension); only the content lives here.
  */
 export class QlikScriptFS implements vscode.FileSystemProvider {
   static readonly SCHEME = 'qlikscript';
@@ -48,7 +51,11 @@ export class QlikScriptFS implements vscode.FileSystemProvider {
   /** Build a URI for a section */
   static uri(appId: string, section: ScriptSection): vscode.Uri {
     const safeName = encodeURIComponent(section.name);
-    return vscode.Uri.parse(`${QlikScriptFS.SCHEME}://${appId}/${section.id}/${safeName}.qvs`);
+    return vscode.Uri.from({
+      scheme: QlikScriptFS.SCHEME,
+      authority: section.id,
+      path: `/${appId}/${safeName}.qvs`,
+    });
   }
 
   // ── FileSystemProvider ─────────────────────────────────────────────────────
@@ -67,12 +74,12 @@ export class QlikScriptFS implements vscode.FileSystemProvider {
   }
 
   readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
-    const appId = uri.authority;
+    const appId = uri.path.split('/').filter(Boolean)[0] ?? uri.authority;
     const prefix = `/${appId}/`;
     const result: [string, vscode.FileType][] = [];
     for (const key of this._files.keys()) {
       if (key.startsWith(prefix)) {
-        result.push([path.basename(key), vscode.FileType.File]);
+        result.push([key.slice(prefix.length), vscode.FileType.File]);
       }
     }
     return result;
@@ -125,14 +132,13 @@ export class QlikScriptFS implements vscode.FileSystemProvider {
   }
 
   private _uriToKey(uri: vscode.Uri): string | undefined {
-    // URI path is /<sectionId>/<name>.qvs — the authority is the appId
+    // URI: qlikscript://<sectionId>/<appId>/<name>.qvs
+    // authority = sectionId, parts[0] = appId
     const parts = uri.path.split('/').filter(Boolean);
     if (parts.length < 1) return undefined;
-    const appId = uri.authority;
-    const sectionId = parts[0]; // first path segment is the section ID
+    const sectionId = uri.authority;
+    const appId = parts[0];
     return `/${appId}/${sectionId}`;
   }
 }
 
-// Needed for readDirectory — import path at module level
-import * as path from 'path';
