@@ -20,7 +20,6 @@
     { "include": "#functions" },
     { "include": "#constants" },
     { "include": "#number" },
-    { "include": "#wildcard-star" },
     { "include": "#semicolon" }
   ],
   "repository": {
@@ -149,12 +148,6 @@
       "comment": "Numeric literals (integer, decimal, scientific notation, hex)",
       "name": "constant.numeric.qvs",
       "match": "\\b(0x[0-9a-fA-F]+|\\d+\\.?\\d*([eE][+-]?\\d+)?)\\b"
-    },
-
-    "wildcard-star": {
-      "comment": "Wildcard * in LOAD * or field lists",
-      "name": "keyword.operator.wildcard.qvs",
-      "match": "(?<=LOAD|load|Load)\\s*(\\*)|^\\s*(\\*)"
     },
 
     "semicolon": {

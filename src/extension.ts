@@ -266,7 +266,9 @@ async function loadAppScript(app: QlikApp): Promise<void> {
   // Open the first section automatically
   if (sections.length > 0) {
     const uri = QlikScriptFS.uri(app.id, sections[0]);
-    await vscode.window.showTextDocument(uri, { preview: false });
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await vscode.languages.setTextDocumentLanguage(doc, 'qlikscript');
+    await vscode.window.showTextDocument(doc, { preview: false });
   }
 }
 
@@ -314,7 +316,9 @@ async function cmdSaveScript(): Promise<void> {
 
 async function cmdOpenSection(item: SectionItem): Promise<void> {
   const uri = QlikScriptFS.uri(item.appId, item.section);
-  await vscode.window.showTextDocument(uri, { preview: false, preserveFocus: false });
+  const doc = await vscode.workspace.openTextDocument(uri);
+  await vscode.languages.setTextDocumentLanguage(doc, 'qlikscript');
+  await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false });
 }
 
 async function cmdAddSection(): Promise<void> {
@@ -332,7 +336,9 @@ async function cmdAddSection(): Promise<void> {
   scriptFS.writeSectionBody(currentAppId, section.id, '');
 
   const uri = QlikScriptFS.uri(currentAppId, section);
-  await vscode.window.showTextDocument(uri, { preview: false });
+  const doc = await vscode.workspace.openTextDocument(uri);
+  await vscode.languages.setTextDocumentLanguage(doc, 'qlikscript');
+  await vscode.window.showTextDocument(doc, { preview: false });
 
   treeProvider.markDirty(section.id);
   const refresh = (globalThis as Record<string, unknown>).__qlikRefreshStatus as (() => void) | undefined;

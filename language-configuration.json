@@ -21,7 +21,7 @@
   "onEnterRules": [
     {
       "beforeText": "(?i)\\b(if|for|for\\s+each|do|sub|switch)\\b.*",
-      "action": { "indent": "indent" }
+      "action": { "indentAction": "indent" }
     }
   ],
   "wordPattern": "[A-Za-z_$][A-Za-z0-9_$.]*",
