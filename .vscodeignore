@@ -1,0 +1,18 @@
+# Dependencies — bundled by esbuild, not needed at runtime
+node_modules/
+
+# Source files — compiled into dist/
+src/
+
+# Build tooling
+esbuild.js
+tsconfig.json
+package-lock.json
+
+# TypeScript output maps (not needed by VS Code)
+dist/**/*.map
+
+# Development / repo files
+.gitignore
+*.md
+!README.md

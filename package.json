@@ -1,9 +1,9 @@
 {
-  "name": "vscode-qlikcloud",
-  "displayName": "Qlik Cloud Script Editor",
-  "description": "Edit Qlik Cloud app load scripts with section support",
+  "name": "qlikcloud",
+  "displayName": "Qlik Cloud Load Script Editor",
+  "description": "Edit Qlik Cloud app load scripts",
   "version": "0.0.1",
-  "publisher": "ahaydon",
+  "publisher": "aayqlik",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -14,7 +14,7 @@
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "Programming Languages"
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",
