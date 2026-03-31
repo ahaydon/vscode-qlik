@@ -18,7 +18,7 @@ export class QlikHistoryContentProvider implements vscode.TextDocumentContentPro
     return vscode.Uri.from({
       scheme: QlikHistoryContentProvider.SCHEME,
       authority: scriptId,
-      path: `/${encodeURIComponent(sectionName)}.qvs`,
+      path: `/${sectionName}.qvs`,
     });
   }
 

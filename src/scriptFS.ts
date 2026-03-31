@@ -50,11 +50,10 @@ export class QlikScriptFS implements vscode.FileSystemProvider {
 
   /** Build a URI for a section */
   static uri(appId: string, section: ScriptSection): vscode.Uri {
-    const safeName = encodeURIComponent(section.name);
     return vscode.Uri.from({
       scheme: QlikScriptFS.SCHEME,
       authority: section.id,
-      path: `/${appId}/${safeName}.qvs`,
+      path: `/${appId}/${section.name}.qvs`,
     });
   }
 
