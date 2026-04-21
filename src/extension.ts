@@ -7,6 +7,7 @@ import { QlikScriptFS } from './scriptFS';
 import { QlikScriptTreeProvider, SectionItem } from './treeProvider';
 import { QlikHistoryContentProvider } from './historyContentProvider';
 import { QlikHistoryProvider, HistoryVersionItem, HistorySectionItem } from './historyProvider';
+import { QlikCompletionProvider, QlikHoverProvider, validateSections, validateDocument } from './languageProvider';
 
 // ── Module-level state ─────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ const treeProvider = new QlikScriptTreeProvider();
 const historyContentProvider = new QlikHistoryContentProvider();
 const historyProvider = new QlikHistoryProvider(historyContentProvider);
 const reloadOutput = vscode.window.createOutputChannel('Qlik Cloud Reload', 'log');
+const diagCollection = vscode.languages.createDiagnosticCollection('qlikscript');
 
 // ── Activation ─────────────────────────────────────────────────────────────
 
@@ -52,6 +54,34 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   context.subscriptions.push(historyView);
 
+  // Language intelligence: completions, hover docs, diagnostics
+  context.subscriptions.push(
+    diagCollection,
+    vscode.languages.registerCompletionItemProvider(
+      { language: 'qlikscript' },
+      new QlikCompletionProvider(treeProvider),
+      '$',
+    ),
+    vscode.languages.registerHoverProvider(
+      { language: 'qlikscript' },
+      new QlikHoverProvider(),
+    ),
+    // Validate local .qvs files on open and change
+    vscode.workspace.onDidOpenTextDocument(doc => {
+      if (doc.languageId === 'qlikscript' && doc.uri.scheme === 'file') {
+        validateDocument(doc, diagCollection);
+      }
+    }),
+    vscode.workspace.onDidChangeTextDocument(e => {
+      if (e.document.languageId === 'qlikscript' && e.document.uri.scheme === 'file') {
+        validateDocument(e.document, diagCollection, 500);
+      }
+    }),
+    vscode.workspace.onDidCloseTextDocument(doc => {
+      if (doc.uri.scheme === 'file') diagCollection.delete(doc.uri);
+    }),
+  );
+
   // Update tree title to show current context / app
   const updateTitle = () => {
     const parts: string[] = [];
@@ -78,6 +108,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const s = sections.find(x => x.id === sectionId);
         if (s && body !== undefined) s.body = body;
       }
+      if (appId) validateSections(treeProvider.getSections(), scriptFS, appId, diagCollection, 500);
       updateTitle();
       vscode.commands.executeCommand('setContext', 'qlikcloud.appLoaded', true);
     }),
@@ -280,6 +311,7 @@ async function loadAppScript(app: QlikApp): Promise<void> {
 
   // Update tree
   treeProvider.setApp(app.id, app.name, sections);
+  validateSections(sections, scriptFS, app.id, diagCollection);
   vscode.commands.executeCommand('setContext', 'qlikcloud.appLoaded', true);
 
   // Load history in background
@@ -552,6 +584,7 @@ async function cmdRevertToVersion(item: HistoryVersionItem): Promise<void> {
   scriptFS.populateSections(currentAppId!, sections);
   treeProvider.setApp(currentAppId!, appName!, sections);
   treeProvider.markDirty('__reverted__');
+  validateSections(sections, scriptFS, currentAppId!, diagCollection);
   historyProvider.loadHistory(currentAppId!, currentClient!);
 
   vscode.commands.executeCommand('setContext', 'qlikcloud.appLoaded', true);
