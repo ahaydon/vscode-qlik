@@ -37,6 +37,10 @@
         {
           "id": "qlikScriptHistory",
           "name": "Script History"
+        },
+        {
+          "id": "qlikReloadLogs",
+          "name": "Reload Logs"
         }
       ]
     },
@@ -98,6 +102,20 @@
       {
         "command": "qlikcloud.openHistoryDiff",
         "title": "Show Diff"
+      },
+      {
+        "command": "qlikcloud.refreshReloadLogs",
+        "title": "Refresh Reload Logs",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "qlikcloud.showReloadSummary",
+        "title": "Show Reload Summary"
+      },
+      {
+        "command": "qlikcloud.openReloadLog",
+        "title": "Open Reload Log",
+        "icon": "$(go-to-file)"
       }
     ],
     "menus": {
@@ -131,6 +149,11 @@
           "command": "qlikcloud.refreshHistory",
           "when": "view == qlikScriptHistory && qlikcloud.appLoaded",
           "group": "navigation@1"
+        },
+        {
+          "command": "qlikcloud.refreshReloadLogs",
+          "when": "view == qlikReloadLogs && qlikcloud.appLoaded",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -158,6 +181,11 @@
           "command": "qlikcloud.revertToVersion",
           "when": "view == qlikScriptHistory && viewItem == historyVersion",
           "group": "inline@1"
+        },
+        {
+          "command": "qlikcloud.openReloadLog",
+          "when": "view == qlikReloadLogs && viewItem == reloadLogWithLog",
+          "group": "inline"
         }
       ]
     },

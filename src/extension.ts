@@ -8,6 +8,8 @@ import { QlikScriptTreeProvider, SectionItem } from './treeProvider';
 import { QlikHistoryContentProvider } from './historyContentProvider';
 import { QlikHistoryProvider, HistoryVersionItem, HistorySectionItem } from './historyProvider';
 import { QlikCompletionProvider, QlikHoverProvider, validateSections, validateDocument } from './languageProvider';
+import { QlikReloadLogProvider, ReloadLogItem } from './reloadLogProvider';
+import { QlikReloadLogContentProvider } from './reloadLogContentProvider';
 
 // ── Module-level state ─────────────────────────────────────────────────────
 
@@ -19,6 +21,8 @@ const scriptFS = new QlikScriptFS();
 const treeProvider = new QlikScriptTreeProvider();
 const historyContentProvider = new QlikHistoryContentProvider();
 const historyProvider = new QlikHistoryProvider(historyContentProvider);
+const reloadLogContentProvider = new QlikReloadLogContentProvider();
+const reloadLogProvider = new QlikReloadLogProvider();
 const reloadOutput = vscode.window.createOutputChannel('Qlik Cloud Reload', 'log');
 const diagCollection = vscode.languages.createDiagnosticCollection('qlikscript');
 
@@ -41,6 +45,14 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
   );
 
+  // Register reload log content provider (read-only, for opening log text)
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(
+      QlikReloadLogContentProvider.SCHEME,
+      reloadLogContentProvider,
+    ),
+  );
+
   // Register tree views
   const treeView = vscode.window.createTreeView('qlikScriptSections', {
     treeDataProvider: treeProvider,
@@ -53,6 +65,12 @@ export function activate(context: vscode.ExtensionContext): void {
     showCollapseAll: false,
   });
   context.subscriptions.push(historyView);
+
+  const reloadLogView = vscode.window.createTreeView('qlikReloadLogs', {
+    treeDataProvider: reloadLogProvider,
+    showCollapseAll: false,
+  });
+  context.subscriptions.push(reloadLogView);
 
   // Language intelligence: completions, hover docs, diagnostics
   context.subscriptions.push(
@@ -130,6 +148,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('qlikcloud.revertToVersion', cmdRevertToVersion),
     vscode.commands.registerCommand('qlikcloud.openHistoryDiff', cmdOpenHistoryDiff),
     vscode.commands.registerCommand('qlikcloud.reloadApp', cmdReloadApp),
+    vscode.commands.registerCommand('qlikcloud.refreshReloadLogs', cmdRefreshReloadLogs),
+    vscode.commands.registerCommand('qlikcloud.showReloadSummary', cmdShowReloadSummary),
+    vscode.commands.registerCommand('qlikcloud.openReloadLog', cmdOpenReloadLog),
   );
 
   // Status-bar item
@@ -314,8 +335,9 @@ async function loadAppScript(app: QlikApp): Promise<void> {
   validateSections(sections, scriptFS, app.id, diagCollection);
   vscode.commands.executeCommand('setContext', 'qlikcloud.appLoaded', true);
 
-  // Load history in background
+  // Load history and reload logs in background
   historyProvider.loadHistory(app.id, currentClient!);
+  reloadLogProvider.loadLogs(app.id, currentClient!);
 
   const refresh = (globalThis as Record<string, unknown>).__qlikRefreshStatus as (() => void) | undefined;
   refresh?.();
@@ -519,6 +541,7 @@ async function cmdReloadApp(): Promise<void> {
       if (result === 'succeeded') {
         vscode.window.showInformationMessage(`Reload succeeded: "${appName}"`);
         historyProvider.loadHistory(currentAppId!, currentClient!);
+        reloadLogProvider.loadLogs(currentAppId!, currentClient!);
       } else if (result === 'cancelled') {
         vscode.window.showWarningMessage(`Reload cancelled: "${appName}"`);
       } else {
@@ -539,6 +562,51 @@ async function cmdRefreshHistory(): Promise<void> {
 async function cmdOpenHistoryDiff(item: HistorySectionItem): Promise<void> {
   const title = `${item.sectionName} (${item.versionLabel})`;
   await vscode.commands.executeCommand('vscode.diff', item.histUri, item.currentUri, title);
+}
+
+async function cmdRefreshReloadLogs(): Promise<void> {
+  if (!currentClient || !currentAppId) {
+    vscode.window.showErrorMessage('No app loaded.');
+    return;
+  }
+  reloadLogProvider.loadLogs(currentAppId, currentClient);
+}
+
+function cmdShowReloadSummary(item: ReloadLogItem): void {
+  reloadOutput.clear();
+  reloadOutput.show(/* preserveFocus */ true);
+  if (item.summary) {
+    reloadOutput.append(item.summary);
+  } else {
+    reloadOutput.appendLine('No summary available for this reload.');
+  }
+}
+
+async function cmdOpenReloadLog(item: ReloadLogItem): Promise<void> {
+  if (!currentClient || !currentAppId) {
+    vscode.window.showErrorMessage('No app loaded.');
+    return;
+  }
+
+  if (!item.reloadId) {
+    vscode.window.showErrorMessage('No reload ID available for this log entry.');
+    return;
+  }
+
+  let content = reloadLogContentProvider.get(item.reloadId);
+  if (!content) {
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Downloading reload log…', cancellable: false },
+      async () => {
+        content = await currentClient!.getReloadLog(currentAppId!, item.reloadId);
+        reloadLogContentProvider.store(item.reloadId, content!);
+      },
+    );
+  }
+
+  const uri = QlikReloadLogContentProvider.uri(item.reloadId);
+  const doc = await vscode.workspace.openTextDocument(uri);
+  await vscode.window.showTextDocument(doc, { preview: false });
 }
 
 async function cmdRevertToVersion(item: HistoryVersionItem): Promise<void> {

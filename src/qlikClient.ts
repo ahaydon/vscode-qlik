@@ -1,12 +1,14 @@
 import { getSpaces as apiGetSpaces } from '@qlik/api/spaces';
 import { getItems } from '@qlik/api/items';
-import { getAppScript, getAppScriptHistory, updateAppScript } from '@qlik/api/apps';
+import { getAppScript, getAppScriptHistory, updateAppScript, getAppReloadLogs, getAppReloadLog } from '@qlik/api/apps';
+import { getReloads as apiGetReloads } from '@qlik/api/reloads';
 import { openAppSession } from '@qlik/api/qix';
 import type { Space } from '@qlik/api/spaces';
-import type { ScriptMeta } from '@qlik/api/apps';
+import type { ScriptMeta, ScriptLogMeta } from '@qlik/api/apps';
+import type { Reload } from '@qlik/api/reloads';
 import type { HostConfig } from '@qlik/api/auth';
 
-export type { ScriptMeta };
+export type { ScriptMeta, ScriptLogMeta, Reload };
 
 export type { Space as QlikSpace };
 
@@ -24,6 +26,9 @@ export interface QlikClient {
   saveScript(appId: string, script: string, versionMessage: string): Promise<void>;
   getScriptHistory(appId: string): Promise<ScriptMeta[]>;
   getScriptVersion(appId: string, scriptId: string): Promise<string>;
+  getReloads(appId: string): Promise<Reload[]>;
+  getReloadLogs(appId: string): Promise<ScriptLogMeta[]>;
+  getReloadLog(appId: string, reloadId: string): Promise<string>;
   reloadApp(
     appId: string,
     onLog: (chunk: string) => void,
@@ -110,6 +115,23 @@ export function createClient(hostConfig: HostConfig): QlikClient {
     async getScriptVersion(appId: string, scriptId: string): Promise<string> {
       const response = await getAppScript(appId, scriptId, opts());
       return response.data.script ?? '';
+    },
+
+    async getReloads(appId: string): Promise<Reload[]> {
+      const response = await apiGetReloads({ appId, limit: 100, sort: '-creationTime', log: true }, opts());
+      return response.data.data ?? [];
+    },
+
+    async getReloadLogs(appId: string): Promise<ScriptLogMeta[]> {
+      const response = await getAppReloadLogs(appId, opts());
+      return response.data.data ?? [];
+    },
+
+    async getReloadLog(appId: string, reloadId: string): Promise<string> {
+      const response = await getAppReloadLog(appId, reloadId, opts());
+      // The API declares data as DownloadableBlob but text/plain responses are
+      // decoded to a string by the fetch interceptor before this point.
+      return response.data as unknown as string;
     },
 
     async reloadApp(
