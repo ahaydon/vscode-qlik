@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.0] - 2026-04-23
+
+### Added
+
+- **Language intelligence** — completions (keywords, functions, variables, subs, tables), hover documentation, and diagnostics for `.qvs` files; completions are cross-section, drawing symbols from all open sections
+- **Reload history panel** — the sidebar now shows all recent reloads with status icons, timestamps, and duration; reloads that have a log available show a download icon to open the full log in the editor
+
+### Fixed
+
+- Tab titles for script sections and reload logs no longer begin with a leading backslash on Windows; sections now show just the section name and reload logs show the reload timestamp
+- History diff no longer compares a version against the current working copy; it now diffs each version against its direct predecessor
+- URL-encoded characters in section names are decoded correctly in tab titles
+
 ## [0.0.1] - 2026-03-31
 
 ### Added

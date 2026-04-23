@@ -16,10 +16,17 @@ A VS Code extension for editing and managing Qlik Cloud app load scripts directl
 - Click a changed section to open a **diff editor** showing exactly what differs
 - Revert to any previous version with a single click
 
-### App Reload
+### App Reload & Logs
 - Trigger a Qlik Cloud app reload from VS Code using the engine API
 - Live log output streams to a dedicated **Qlik Cloud Reload** output channel
 - Cancel an in-progress reload via the notification
+- Browse recent reloads in the **Reloads** panel with status icons, timestamps, and duration
+- Click any reload with an available log to open the full log text in the editor
+
+### Language Intelligence
+- Completions for keywords, built-in functions, variables, subs, and table names — drawn from all open sections
+- Hover documentation for built-in functions
+- Diagnostics flag unknown variables and common mistakes
 
 ### Syntax Highlighting
 - Full syntax highlighting for Qlik Script (`.qvs`) files

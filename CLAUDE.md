@@ -36,7 +36,7 @@ This is a VS Code extension that lets users edit Qlik Cloud app load scripts dir
 
 **Tree provider** (`src/treeProvider.ts`): Drives the "Script Sections" sidebar view. Owns section ordering and dirty state. When sections are reordered or renamed, the tree is the source of truth; the FS is updated to match.
 
-**History** (`src/historyProvider.ts`, `src/historyContentProvider.ts`): Loads script version history via the Qlik API and presents it in the "Script History" view. `historyContentProvider` registers the `qlikscript-history://` scheme used as the left side of diff editors.
+**History** (`src/historyProvider.ts`, `src/historyContentProvider.ts`): Loads script version history via the Qlik API and presents it in the "Script History" view. `historyContentProvider` registers the `qlikhist://` scheme used as the left side of diff editors. Each version is diffed against its direct predecessor (not the working copy).
 
 **Language support** (`src/languageProvider.ts`): Provides completions (keywords, functions, variables, subs, tables parsed from all open sections), hover docs, and diagnostics for `.qvs` files. Completions are cross-section — symbols from all sections are available everywhere.
 
@@ -44,8 +44,13 @@ This is a VS Code extension that lets users edit Qlik Cloud app load scripts dir
 
 **Context loading** (`src/contexts.ts`): Reads `~/.qlik/contexts.yml`. Supports API key (Bearer token in headers) and OAuth2 client credentials auth. Contexts without usable auth are silently skipped.
 
+**Reload logs** (`src/reloadLogProvider.ts`, `src/reloadLogContentProvider.ts`): The "Reloads" panel lists recent reloads (status, timestamp, duration) via `QlikReloadLogProvider`. `reloadLogContentProvider` registers the `qlikreloadlog://` scheme; reload log text is fetched on demand and cached.
+
 **Extension entry** (`src/extension.ts`): Module-level state (`currentContext`, `currentClient`, `currentAppId`) is the only global state. All commands are registered in `activate()`. The `__qlikRefreshStatus` globalThis hack lets command implementations trigger status bar updates without circular imports.
+
+**Tab titles**: Script sections and reload logs are opened via `vscode.commands.executeCommand('vscode.open', uri, options, label)` rather than `showTextDocument`, so a custom label (section name or reload timestamp) is set explicitly. History diffs use `vscode.diff` with an explicit title for the same reason. Without a custom label, VS Code shows the full URI path with leading backslashes on Windows.
 
 ### URI schemes
 - `qlikscript://` — writable virtual FS for editing sections
-- `qlikscript-history://` — read-only content provider for history diff views
+- `qlikhist://` — read-only content provider for history diff views (left side)
+- `qlikreloadlog://` — read-only content provider for reload log text
