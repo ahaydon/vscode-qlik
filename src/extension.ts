@@ -351,7 +351,7 @@ async function loadAppScript(app: QlikApp): Promise<void> {
     const uri = QlikScriptFS.uri(app.id, sections[0]);
     const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.languages.setTextDocumentLanguage(doc, 'qlikscript');
-    await vscode.window.showTextDocument(doc, { preview: false });
+    await vscode.commands.executeCommand('vscode.open', uri, { preview: true }, sections[0].name);
   }
 }
 
@@ -401,7 +401,7 @@ async function cmdOpenSection(item: SectionItem): Promise<void> {
   const uri = QlikScriptFS.uri(item.appId, item.section);
   const doc = await vscode.workspace.openTextDocument(uri);
   await vscode.languages.setTextDocumentLanguage(doc, 'qlikscript');
-  await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false });
+  await vscode.commands.executeCommand('vscode.open', uri, { preview: true, preserveFocus: false }, item.section.name);
 }
 
 async function cmdAddSection(): Promise<void> {
@@ -421,7 +421,7 @@ async function cmdAddSection(): Promise<void> {
   const uri = QlikScriptFS.uri(currentAppId, section);
   const doc = await vscode.workspace.openTextDocument(uri);
   await vscode.languages.setTextDocumentLanguage(doc, 'qlikscript');
-  await vscode.window.showTextDocument(doc, { preview: false });
+  await vscode.commands.executeCommand('vscode.open', uri, { preview: false }, section.name);
 
   treeProvider.markDirty(section.id);
   const refresh = (globalThis as Record<string, unknown>).__qlikRefreshStatus as (() => void) | undefined;
@@ -604,9 +604,10 @@ async function cmdOpenReloadLog(item: ReloadLogItem): Promise<void> {
     );
   }
 
+  const tabLabel = typeof item.label === 'string' ? item.label : 'Reload Log';
   const uri = QlikReloadLogContentProvider.uri(item.reloadId);
-  const doc = await vscode.workspace.openTextDocument(uri);
-  await vscode.window.showTextDocument(doc, { preview: false });
+  await vscode.workspace.openTextDocument(uri);
+  await vscode.commands.executeCommand('vscode.open', uri, { preview: false }, tabLabel);
 }
 
 async function cmdRevertToVersion(item: HistoryVersionItem): Promise<void> {
@@ -665,7 +666,7 @@ async function cmdRevertToVersion(item: HistoryVersionItem): Promise<void> {
     const uri = QlikScriptFS.uri(currentAppId!, sections[0]);
     const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.languages.setTextDocumentLanguage(doc, 'qlikscript');
-    await vscode.window.showTextDocument(doc, { preview: false });
+    await vscode.commands.executeCommand('vscode.open', uri, { preview: true }, sections[0].name);
   }
 
   vscode.window.showInformationMessage(`Reverted to "${label}" — save to push to Qlik Cloud.`);
