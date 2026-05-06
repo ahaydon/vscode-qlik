@@ -2,7 +2,7 @@
   "name": "qlikcloud",
   "displayName": "Qlik Cloud Load Script Editor",
   "description": "Edit Qlik Cloud app load scripts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "aayqlik",
   "license": "MIT",
   "repository": {
