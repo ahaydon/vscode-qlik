@@ -4,12 +4,25 @@ import * as os from 'os';
 import * as yaml from 'js-yaml';
 import type { HostConfig } from '@qlik/api/auth';
 
+export type ContextSource = 'yaml' | 'oauth';
+
 export interface QlikContext {
   name: string;
   server: string;
   serverType: string;
+  source: ContextSource;
   hostConfig: HostConfig;
+  /** For OAuth contexts: the clientId, surfaced so callers can build the runtime hostConfig. */
+  clientId?: string;
 }
+
+export interface SavedOauthClient {
+  name: string;
+  host: string;
+  clientId: string;
+}
+
+export const OAUTH_CLIENTS_KEY = 'qlikcloud.oauthClients';
 
 interface RawContext {
   server?: string;
@@ -25,7 +38,7 @@ interface ContextsFile {
   contexts?: Record<string, RawContext>;
 }
 
-export function loadContexts(): { contexts: QlikContext[]; currentContext: string | undefined } {
+export function loadYamlContexts(): { contexts: QlikContext[]; currentContext: string | undefined } {
   const contextPath = path.join(os.homedir(), '.qlik', 'contexts.yml');
   if (!fs.existsSync(contextPath)) {
     return { contexts: [], currentContext: undefined };
@@ -59,8 +72,35 @@ export function loadContexts(): { contexts: QlikContext[]; currentContext: strin
       continue;
     }
 
-    contexts.push({ name, server: host, serverType, hostConfig });
+    contexts.push({ name, server: host, serverType, source: 'yaml', hostConfig });
   }
 
   return { contexts, currentContext };
+}
+
+/**
+ * Build placeholder QlikContext entries for each saved OAuth client. The
+ * runtime hostConfig (with performInteractiveLogin and accessTokenStorage)
+ * must be constructed by the caller using the extension's SecretStorage.
+ */
+export function oauthClientsToContexts(clients: SavedOauthClient[]): QlikContext[] {
+  return clients.map(c => ({
+    name: c.name,
+    server: c.host,
+    serverType: 'cloud',
+    source: 'oauth',
+    clientId: c.clientId,
+    // Placeholder — extension.ts replaces this before creating the client.
+    hostConfig: { authType: 'oauth2', host: c.host, clientId: c.clientId } as HostConfig,
+  }));
+}
+
+export function loadContexts(
+  savedOauthClients: SavedOauthClient[] = [],
+): { contexts: QlikContext[]; currentContext: string | undefined } {
+  const { contexts: yamlContexts, currentContext } = loadYamlContexts();
+  return {
+    contexts: [...yamlContexts, ...oauthClientsToContexts(savedOauthClients)],
+    currentContext,
+  };
 }

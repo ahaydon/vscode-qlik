@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { loadContexts, QlikContext } from './contexts';
+import { loadContexts, QlikContext, SavedOauthClient, OAUTH_CLIENTS_KEY } from './contexts';
+import { buildOauthHostConfig, clearOauthTokens, OAUTH_REDIRECT_URI } from './oauthFlow';
 import { createClient, QlikClient, QlikApp } from './qlikClient';
 import type { Space } from '@qlik/api/spaces';
 import { parseScript, serializeScript } from './scriptModel';
@@ -13,6 +14,7 @@ import { QlikReloadLogContentProvider } from './reloadLogContentProvider';
 
 // ── Module-level state ─────────────────────────────────────────────────────
 
+let extCtx: vscode.ExtensionContext | undefined;
 let currentContext: QlikContext | undefined;
 let currentClient: QlikClient | undefined;
 let currentAppId: string | undefined;
@@ -29,6 +31,8 @@ const diagCollection = vscode.languages.createDiagnosticCollection('qlikscript')
 // ── Activation ─────────────────────────────────────────────────────────────
 
 export function activate(context: vscode.ExtensionContext): void {
+  extCtx = context;
+
   // Register virtual filesystem
   context.subscriptions.push(
     vscode.workspace.registerFileSystemProvider(QlikScriptFS.SCHEME, scriptFS, {
@@ -168,19 +172,12 @@ export function activate(context: vscode.ExtensionContext): void {
     updateTitle();
   };
 
-  // Wrap select-context to also refresh status
-  const origSelect = cmdSelectContext;
   context.subscriptions.push(
     vscode.commands.registerCommand('_qlikcloud.refreshStatus', refreshStatus),
   );
 
   // Initial state
   vscode.commands.executeCommand('setContext', 'qlikcloud.appLoaded', false);
-
-  // ── Helper: refresh status after context change ──────────────────────────
-  // We patch statusBar update into the command registration below.
-  // (The commands defined above capture a closure; we update statusBar in the
-  //  selectContext implementation via the module-level currentContext ref.)
 
   // Expose refreshStatus so commands can call it
   (globalThis as Record<string, unknown>).__qlikRefreshStatus = refreshStatus;
@@ -190,34 +187,199 @@ export function deactivate(): void {}
 
 // ── Command implementations ────────────────────────────────────────────────
 
+// ── OAuth client helpers ─────────────────────────────────────────────────
+
+function getSavedOauthClients(): SavedOauthClient[] {
+  if (!extCtx) return [];
+  return extCtx.globalState.get<SavedOauthClient[]>(OAUTH_CLIENTS_KEY, []);
+}
+
+async function saveOauthClients(clients: SavedOauthClient[]): Promise<void> {
+  if (!extCtx) return;
+  await extCtx.globalState.update(OAUTH_CLIENTS_KEY, clients);
+}
+
+function normalizeHost(input: string): string {
+  return input.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+}
+
+async function promptForOauthClient(existingNames: Set<string>): Promise<SavedOauthClient | undefined> {
+  const host = await vscode.window.showInputBox({
+    title: 'Add OAuth Client (1/3) — Tenant host',
+    prompt: `Tenant hostname (e.g. my-tenant.region.qlikcloud.com). Register redirect URI ${OAUTH_REDIRECT_URI} in your Qlik OAuth client.`,
+    placeHolder: 'my-tenant.region.qlikcloud.com',
+    validateInput: v => (normalizeHost(v) ? undefined : 'Host cannot be empty'),
+  });
+  if (!host) return undefined;
+
+  const clientId = await vscode.window.showInputBox({
+    title: 'Add OAuth Client (2/3) — Client ID',
+    prompt: 'OAuth client ID (from the Qlik tenant admin)',
+    validateInput: v => (v.trim() ? undefined : 'Client ID cannot be empty'),
+  });
+  if (!clientId) return undefined;
+
+  const normalizedHost = normalizeHost(host);
+  const defaultName = normalizedHost.split('.')[0] || normalizedHost;
+  const name = await vscode.window.showInputBox({
+    title: 'Add OAuth Client (3/3) — Display name',
+    prompt: 'A friendly name for this OAuth context',
+    value: defaultName,
+    validateInput: v => {
+      const t = v.trim();
+      if (!t) return 'Name cannot be empty';
+      if (existingNames.has(t)) return `A context named "${t}" already exists`;
+      return undefined;
+    },
+  });
+  if (!name) return undefined;
+
+  return { name: name.trim(), host: normalizedHost, clientId: clientId.trim() };
+}
+
+const REMOVE_BUTTON: vscode.QuickInputButton = {
+  iconPath: new vscode.ThemeIcon('trash'),
+  tooltip: 'Remove this OAuth client',
+};
+
+interface ContextPickItem extends vscode.QuickPickItem {
+  ctx?: QlikContext;
+  action?: 'add';
+}
+
 async function cmdSelectContext(): Promise<void> {
-  const { contexts, currentContext: defaultCtx } = loadContexts();
-  if (contexts.length === 0) {
-    vscode.window.showErrorMessage('No Qlik contexts found in ~/.qlik/contexts.yml');
+  if (!extCtx) return;
+
+  const buildItems = (): ContextPickItem[] => {
+    const saved = getSavedOauthClients();
+    const { contexts, currentContext: defaultCtx } = loadContexts(saved);
+
+    const yaml = contexts.filter(c => c.source === 'yaml');
+    const oauth = contexts.filter(c => c.source === 'oauth');
+
+    const items: ContextPickItem[] = [];
+
+    if (yaml.length > 0) {
+      items.push({ label: 'From ~/.qlik/contexts.yml', kind: vscode.QuickPickItemKind.Separator });
+      for (const c of yaml) {
+        items.push({
+          label: c.name,
+          description: c.server,
+          detail: c.serverType === 'cloud' ? '$(cloud) Cloud' : `$(server) ${c.serverType}`,
+          picked: c.name === defaultCtx,
+          ctx: c,
+        });
+      }
+    }
+
+    if (oauth.length > 0) {
+      items.push({ label: 'OAuth clients', kind: vscode.QuickPickItemKind.Separator });
+      for (const c of oauth) {
+        items.push({
+          label: c.name,
+          description: c.server,
+          detail: '$(key) OAuth interactive',
+          ctx: c,
+          buttons: [REMOVE_BUTTON],
+        });
+      }
+    }
+
+    items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+    items.push({
+      label: '$(add) Add OAuth client…',
+      detail: 'Authenticate with a Qlik tenant via browser consent',
+      action: 'add',
+    });
+
+    return items;
+  };
+
+  const qp = vscode.window.createQuickPick<ContextPickItem>();
+  qp.title = 'Select Qlik Context';
+  qp.placeholder = 'Choose a context, or add a new OAuth client';
+  qp.items = buildItems();
+
+  const selected = await new Promise<ContextPickItem | undefined>(resolve => {
+    qp.onDidTriggerItemButton(async e => {
+      if (e.button !== REMOVE_BUTTON || !e.item.ctx || e.item.ctx.source !== 'oauth') return;
+      const confirm = await vscode.window.showWarningMessage(
+        `Remove OAuth client "${e.item.ctx.name}"? Cached tokens will be deleted.`,
+        { modal: true },
+        'Remove',
+      );
+      if (confirm !== 'Remove') return;
+      const saved = getSavedOauthClients();
+      const removed = saved.find(c => c.name === e.item.ctx!.name);
+      const next = saved.filter(c => c.name !== e.item.ctx!.name);
+      await saveOauthClients(next);
+      if (removed && extCtx) await clearOauthTokens(removed, extCtx.secrets);
+      qp.items = buildItems();
+    });
+    qp.onDidAccept(() => {
+      resolve(qp.selectedItems[0]);
+      qp.hide();
+    });
+    qp.onDidHide(() => resolve(undefined));
+    qp.show();
+  });
+
+  if (!selected) return;
+
+  if (selected.action === 'add') {
+    const existingNames = new Set([
+      ...loadContexts(getSavedOauthClients()).contexts.map(c => c.name),
+    ]);
+    const newClient = await promptForOauthClient(existingNames);
+    if (!newClient) return;
+    const next = [...getSavedOauthClients(), newClient];
+    await saveOauthClients(next);
+    await connectToOauthClient(newClient);
     return;
   }
 
-  const items: vscode.QuickPickItem[] = contexts.map(c => ({
-    label: c.name,
-    description: c.server,
-    detail: c.serverType === 'cloud' ? '$(cloud) Cloud' : `$(server) ${c.serverType}`,
-    picked: c.name === defaultCtx,
-  }));
+  if (!selected.ctx) return;
 
-  const picked = await vscode.window.showQuickPick(items, {
-    title: 'Select Qlik Context',
-    placeHolder: 'Choose a context from ~/.qlik/contexts.yml',
-  });
+  if (selected.ctx.source === 'oauth') {
+    const saved = getSavedOauthClients().find(c => c.name === selected.ctx!.name);
+    if (!saved) return;
+    await connectToOauthClient(saved);
+    return;
+  }
 
-  if (!picked) return;
+  currentContext = selected.ctx;
+  currentClient = createClient(selected.ctx.hostConfig);
+  triggerStatusRefresh();
+  vscode.window.showInformationMessage(`Connected to: ${selected.ctx.server}`);
+}
 
-  currentContext = contexts.find(c => c.name === picked.label)!;
-  currentClient = createClient(currentContext.hostConfig);
+async function connectToOauthClient(client: SavedOauthClient): Promise<void> {
+  if (!extCtx) return;
+  const hostConfig = buildOauthHostConfig(client, extCtx.secrets);
+  const ctx: QlikContext = {
+    name: client.name,
+    server: client.host,
+    serverType: 'cloud',
+    source: 'oauth',
+    clientId: client.clientId,
+    hostConfig,
+  };
+  const probe = createClient(hostConfig);
+  try {
+    await probe.getSpaces();
+  } catch (err) {
+    vscode.window.showErrorMessage(`OAuth login failed: ${(err as Error).message}`);
+    return;
+  }
+  currentContext = ctx;
+  currentClient = probe;
+  triggerStatusRefresh();
+  vscode.window.showInformationMessage(`Connected to: ${client.host}`);
+}
 
-  const refresh = (globalThis as Record<string, unknown>).__qlikRefreshStatus as (() => void) | undefined;
-  refresh?.();
-
-  vscode.window.showInformationMessage(`Connected to: ${currentContext.server}`);
+function triggerStatusRefresh(): void {
+  const fn = (globalThis as Record<string, unknown>).__qlikRefreshStatus as (() => void) | undefined;
+  fn?.();
 }
 
 async function cmdOpenApp(): Promise<void> {
