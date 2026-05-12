@@ -107,6 +107,7 @@ export function buildOauthHostConfig(
     host: client.host,
     clientId: client.clientId,
     redirectUri: OAUTH_REDIRECT_URI,
+    scope: 'user_default offline_access',
     accessTokenStorage: makeSecretStorage(secrets, topic),
     performInteractiveLogin: async ({ getLoginUrl }) => {
       const loginUrl = await getLoginUrl({ redirectUri: OAUTH_REDIRECT_URI });
@@ -133,15 +134,14 @@ export function buildOauthHostConfig(
  *
  * The keys here must mirror what @qlik/api writes via its SecretStorage
  * contract: `qlik-qmfe-api-<clientId>_<scope>-{access,refresh}-token`,
- * passed through our adapter's `<topic>:` prefix. We use the default
- * scope (`user_default`) since `buildOauthHostConfig` does not set one.
+ * passed through our adapter's `<topic>:` prefix.
  */
 export async function clearOauthTokens(
   client: SavedOauthClient,
   secrets: vscode.SecretStorage,
 ): Promise<void> {
   const topic = secretTopic(client.host, client.clientId);
-  const libTopic = `${client.clientId}_user_default`;
+  const libTopic = `${client.clientId}_user_default offline_access`;
   await secrets.delete(`${topic}:qlik-qmfe-api-${libTopic}-access-token`);
   await secrets.delete(`${topic}:qlik-qmfe-api-${libTopic}-refresh-token`);
 }
